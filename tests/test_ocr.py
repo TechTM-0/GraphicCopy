@@ -44,7 +44,8 @@ if __name__ == "__main__":
     else:
         # 引数なし → samples/ フォルダの画像を一覧表示して選択
         import glob
-        candidates = glob.glob("samples/*.*")
+        # samples/ はドメイン別サブフォルダ（flow/ floor/ circuit/）に分けるため再帰探索する
+        candidates = glob.glob("samples/**/*.*", recursive=True)
         image_files = [p for p in candidates if p.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp"))]
 
         if image_files:

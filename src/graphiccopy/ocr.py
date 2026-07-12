@@ -34,7 +34,8 @@ def load_image(path: str) -> np.ndarray:
     return cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
-def run_ocr(image: np.ndarray, scale: float = 1.0, config: str = "--psm 11") -> dict:
+def run_ocr(image: np.ndarray, scale: float = 1.0, config: str = "--psm 11",
+            debug: dict | None = None) -> dict:
     """
     画像に対してOCRを実行し、テキスト情報とマスク画像を返す。
 
@@ -45,6 +46,9 @@ def run_ocr(image: np.ndarray, scale: float = 1.0, config: str = "--psm 11") -> 
         config: Tesseract設定文字列。
                 全体画像は "--psm 11"（疎なテキスト）、
                 切り抜きは "--psm 7"（1行テキスト）。
+        debug : dict を渡すと Tesseract の生出力（空文字・低信頼度を含む）を
+                debug["raw"] に格納する。通常の処理では捨てられる情報のため、
+                「切り抜きは作られたがOCRが空を返した」ケースの追跡に使う。
 
     Returns:
         {
@@ -63,6 +67,13 @@ def run_ocr(image: np.ndarray, scale: float = 1.0, config: str = "--psm 11") -> 
         output_type=pytesseract.Output.DICT,
         config=config,
     )
+
+    if debug is not None:
+        debug["raw"] = [
+            {"text": data["text"][i], "conf": float(data["conf"][i])}
+            for i in range(len(data["text"]))
+            if float(data["conf"][i]) >= 0  # 単語レベルの行のみ（-1はページ/段落等の階層行）
+        ]
 
     h, w = gray.shape[:2]
     orig_h = int(round(h / scale))
@@ -257,7 +268,8 @@ def _filter_by_aspect(bboxes: list,
     return result
 
 
-def run_ocr_with_preprocess(image: np.ndarray, verbose: bool = False) -> dict:
+def run_ocr_with_preprocess(image: np.ndarray, verbose: bool = False,
+                            debug: dict | None = None) -> dict:
     """
     MSERで文字候補領域を検出し、各領域を切り抜いてOCRする。
     全体画像では見つけられない小さいテキスト（10〜14px）に対応する。
@@ -273,6 +285,21 @@ def run_ocr_with_preprocess(image: np.ndarray, verbose: bool = False) -> dict:
 
     Args:
         verbose: True でMSER検出数・マージ判定ログを出力する
+        debug  : dict を渡すと各段階のスナップショットを格納する（tests/eval_ocr.py 用）。
+                 None のときは何も記録せず、処理内容は debug 引数がなかった頃と同一。
+                 stages のbboxは _DETECT_SCALE 倍スケール座標のまま格納する
+                 （元画像座標へ丸めると段階間の同一性判定がブレるため）。
+
+                 debug = {
+                     "scale":   float,                       # _DETECT_SCALE
+                     "stages":  {段階名: [[x,y,w,h], ...]},   # 4倍スケール座標
+                     "crops":   [{"bbox": [x,y,w,h],         # 4倍スケール座標
+                                  "image": np.ndarray,       # OCRに渡した二値画像
+                                  "raw": [{"text","conf"}],  # Tesseract生出力
+                                  "accepted": int}],         # 非空で採用された数
+                     "final":   [text_block, ...],           # 元画像座標
+                     "ocr_calls": int,
+                 }
     """
     from .preprocess import preprocess_for_ocr
 
@@ -282,33 +309,39 @@ def run_ocr_with_preprocess(image: np.ndarray, verbose: bool = False) -> dict:
     scaled = cv2.resize(image, (sw, sh), interpolation=cv2.INTER_CUBIC)
     gray_scaled = cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY)
 
+    if debug is not None:
+        debug["scale"] = scale
+        debug["stages"] = {}
+        debug["crops"] = []
+
+    def _snapshot(name: str, boxes: list) -> None:
+        if debug is not None:
+            debug["stages"][name] = [list(b) for b in boxes]
+        if verbose:
+            print(f"[{name}] remaining: {len(boxes)} regions")
+
     # Step 1: MSER で候補検出
     bboxes = _mser_detect_regions(gray_scaled)
-    if verbose:
-        print(f"[MSER] detected: {len(bboxes)} regions")
+    _snapshot("mser", bboxes)
 
     # Step 2: サイズフィルタ（_DETECT_SCALE 倍スケール基準）
     # 元画像 10px → 4x で 40px、元画像 80px → 4x で 320px
     bboxes = _filter_by_size(bboxes, min_h=20, max_h=320, min_w=10, max_w=800)
-    if verbose:
-        print(f"[size filter] remaining: {len(bboxes)} regions")
+    _snapshot("size_filter", bboxes)
 
     # Step 3: NMS（MSERの重複除去）
     bboxes = _nms_regions(bboxes, iou_threshold=0.3)
-    if verbose:
-        print(f"[NMS] remaining: {len(bboxes)} regions")
+    _snapshot("nms", bboxes)
 
     # Step 4: 横方向限定マージ
     bboxes = _merge_horizontal(
         bboxes, height_ratio=0.8, y_overlap_ratio=0.7, verbose=verbose
     )
-    if verbose:
-        print(f"[merge] remaining: {len(bboxes)} regions")
+    _snapshot("merge", bboxes)
 
     # Step 5: アスペクト比フィルタ（細くて横長の枠線を除外）
     bboxes = _filter_by_aspect(bboxes, min_h=15, max_wh_ratio=10.0)
-    if verbose:
-        print(f"[aspect filter] remaining: {len(bboxes)} regions")
+    _snapshot("aspect_filter", bboxes)
 
     all_blocks = []
     PAD = 10  # 切り抜き時のパディング（_DETECT_SCALE 倍スケール上）
@@ -324,7 +357,16 @@ def run_ocr_with_preprocess(image: np.ndarray, verbose: bool = False) -> dict:
         # 既に _DETECT_SCALE 倍済みなので追加拡大なし（scale=1.0）
         preprocessed, _ = preprocess_for_ocr(crop, scale=1.0)
         # 切り抜き = 1行テキスト想定なので PSM 7（single text line）
-        result = run_ocr(preprocessed, scale=1.0, config="--psm 7")
+        ocr_debug = {} if debug is not None else None
+        result = run_ocr(preprocessed, scale=1.0, config="--psm 7", debug=ocr_debug)
+
+        if debug is not None:
+            debug["crops"].append({
+                "bbox": [x, y, bw, bh],
+                "image": preprocessed,
+                "raw": ocr_debug.get("raw", []),
+                "accepted": len(result["text_blocks"]),
+            })
 
         for block in result["text_blocks"]:
             tx, ty, tw, th = block["bbox"]
@@ -341,6 +383,10 @@ def run_ocr_with_preprocess(image: np.ndarray, verbose: bool = False) -> dict:
             })
 
     unique_blocks = _deduplicate(all_blocks)
+
+    if debug is not None:
+        debug["final"] = [dict(b) for b in unique_blocks]
+        debug["ocr_calls"] = len(bboxes)
 
     mask = np.zeros((h, w), dtype=np.uint8)
     for block in unique_blocks:

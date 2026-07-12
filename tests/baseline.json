@@ -1,0 +1,56 @@
+{
+  "フロー": {
+    "detection_recall": 1.0,
+    "recognition_rate": 0.6666666666666666,
+    "false_positives": 1,
+    "ocr_calls": 9,
+    "empty_crops": 1,
+    "stage_counts": {
+      "mser": 472,
+      "size_filter": 419,
+      "nms": 18,
+      "merge": 9,
+      "aspect_filter": 9
+    },
+    "per_line": [
+      {
+        "gt": "スタート",
+        "pred": "スト",
+        "similarity": 0.5
+      },
+      {
+        "gt": "初期化",
+        "pred": "初期化",
+        "similarity": 1.0
+      },
+      {
+        "gt": "検証",
+        "pred": "検こ・証",
+        "similarity": 0.5
+      }
+    ],
+    "false_positive_texts": [
+      "し"
+    ],
+    "timing": {
+      "mean": 5.9592390667336685,
+      "max": 6.019305599853396,
+      "runs": [
+        6.02,
+        5.91,
+        5.95
+      ]
+    },
+    "char_tracking": {
+      "ス": null,
+      "タ": "recognized",
+      "ー": "final",
+      "ト": null,
+      "初": null,
+      "期": null,
+      "化": null,
+      "検": null,
+      "証": null
+    }
+  }
+}
