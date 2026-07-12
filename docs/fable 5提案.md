@@ -23,7 +23,7 @@
 
 ## 1. 現状の根因分析
 
-### 1-1. 観測されている事実（タスク.md・debug_bbox.png より）
+### 1-1. 観測されている事実（試行6時点・debug_bbox.png より。試行の経緯は [#2](https://github.com/TechTM-0/GraphicCopy/issues/2) のコメント）
 
 | 観測 | 確度 |
 |---|---|
