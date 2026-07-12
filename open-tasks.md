@@ -2,8 +2,9 @@
 
 **正本は GitHub Issues。** このファイルはIssueを開かずに全体を見るためのダッシュボードで、内容は書かない（リンクと状態のみ）。
 
-- 経緯・実装内容・計測結果・判断 → **Issueのコメント**に記録する
-- 現在有効な設計・アルゴリズム → **`docs/`** に記録する（コードと同じコミットで更新する）
+- 不変の情報（経緯・計測結果・なぜそう決めたか）→ **Issueのコメント**
+- 現在有効な設計判断・既知の課題 → **[#9 設計判断ログ](https://github.com/TechTM-0/GraphicCopy/issues/9) の本文**（上書き型）
+- 現在のアルゴリズム → **`docs/ロジック解説.md`**（コードと同じコミットで更新）
 
 最終更新: 2026-07-12
 
@@ -33,6 +34,14 @@
 | [#5](https://github.com/TechTM-0/GraphicCopy/issues/5) | 段階4: ピクセルマスク化 + empty_frame警告 | open |
 | [#6](https://github.com/TechTM-0/GraphicCopy/issues/6) | 段階5: MSER系コード削除 | open |
 | [#7](https://github.com/TechTM-0/GraphicCopy/issues/7) | 評価サンプルの追加（紙の写真を必ず1枚） | open |
+| [#9](https://github.com/TechTM-0/GraphicCopy/issues/9) | 設計判断ログ（正本・**クローズしない**） | 常設 |
+
+## Phase 別ロードマップ
+
+- **Phase 1（進行中）**: Pythonプロトタイプ — 前処理・テキスト検出（CC刷新中 #2）・マスク生成・図形抽出（直線・円）・SVG出力
+- **Phase 2**: 空間関係推定 — テキスト→図形の所属判定・包含/接触関係
+- **Phase 3**: 複雑図形対応 — 形状ヒント・楕円/多角形/自由曲線・矢印/有向エッジ
+- **Phase 4**: 展開 — Web版（WASM）・モバイル版
 
 ## 完了
 
